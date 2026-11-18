@@ -1,6 +1,7 @@
 """Typed state carried between review graph nodes."""
 
-from typing import NotRequired, TypedDict
+import operator
+from typing import Annotated, NotRequired, TypedDict
 
 
 class ReviewState(TypedDict):
@@ -12,7 +13,7 @@ class ReviewState(TypedDict):
     refactored_code: dict[str, str]
     is_approved: bool | None
     reviewer_feedback: str | None
-    history: list[str]
+    history: Annotated[list[str], operator.add]
     repo_name: NotRequired[str]
     pr_repo_name: NotRequired[str]
     pr_number: NotRequired[int]

@@ -40,11 +40,12 @@ def test_graph_pauses_before_apply_changes_node() -> None:
     assert github.commits == []
 
 
-def test_rejection_routes_back_to_refactor_and_pauses_again() -> None:
+def test_rejection_routes_back_to_refactor_and_preserves_full_history() -> None:
     refactor = FakeRefactor()
+    github = FakeGitHubClient()
     graph = build_review_graph(
         checkpointer=MemorySaver(),
-        github_client=FakeGitHubClient(),
+        github_client=github,
         refactor_fn=refactor,
         linter=FakeLinter(),
     )
@@ -54,7 +55,7 @@ def test_rejection_routes_back_to_refactor_and_pauses_again() -> None:
     graph.update_state(
         config,
         {"is_approved": False, "reviewer_feedback": "Keep the public API unchanged."},
-        as_node="lint_code_node",
+        as_node="fetch_pr_node",
     )
     graph.invoke(None, config=config)
 
@@ -63,6 +64,20 @@ def test_rejection_routes_back_to_refactor_and_pauses_again() -> None:
     assert snapshot.values["reviewer_feedback"] == "Keep the public API unchanged."
     assert snapshot.values["is_approved"] is None
     assert refactor.feedback_seen == ["", "Keep the public API unchanged."]
+
+    graph.update_state(config, {"is_approved": True})
+    graph.invoke(None, config=config)
+
+    final_state = graph.get_state(config).values
+    assert final_state["history"] == [
+        "Fetched 1 changed Python file(s).",
+        "Linted 1 file(s); found 0 issue set(s).",
+        "Generated refactors.",
+        "Linted 1 file(s); found 0 issue set(s).",
+        "Generated refactors using reviewer feedback.",
+        "Committed approved refactors as def456.",
+    ]
+    assert len(github.commits) == 1
 
 
 def test_approved_changes_are_committed() -> None:

@@ -217,7 +217,7 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
                 "is_approved": False,
                 "reviewer_feedback": decision.feedback,
             },
-            as_node="lint_code_node",
+            as_node="fetch_pr_node",
         )
         try:
             graph.invoke(None, config=thread_config)
