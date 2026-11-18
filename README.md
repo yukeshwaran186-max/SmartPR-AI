@@ -16,6 +16,19 @@ GITHUB_TOKEN=your_github_token
 OPENAI_API_KEY=your_openai_api_key
 ```
 
+By default, refactor proposals use OpenAI with `OPENAI_MODEL` (default:
+`gpt-4o-mini`) and require `OPENAI_API_KEY`. For an OpenAI-compatible local
+server such as Ollama, optionally set `LLM_BASE_URL` and `LLM_MODEL`; set
+`LLM_API_KEY` if that endpoint requires a key. With `LLM_BASE_URL` configured,
+the service uses the local model settings instead of requiring an OpenAI key.
+Example:
+
+```dotenv
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=qwen2.5-coder:7b
+LLM_API_KEY=ollama
+```
+
 Install dependencies and run the service:
 
 ```powershell

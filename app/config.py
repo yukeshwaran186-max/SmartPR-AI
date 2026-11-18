@@ -8,6 +8,9 @@ load_dotenv()
 
 GITHUB_API_BASE = os.getenv("GITHUB_API_BASE", "https://api.github.com")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL")
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+LLM_MODEL = os.getenv("LLM_MODEL")
 CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", "checkpoints.sqlite")
 LINTER_TIMEOUT_SECONDS = int(os.getenv("LINTER_TIMEOUT_SECONDS", "15"))
 

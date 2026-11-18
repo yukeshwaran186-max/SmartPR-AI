@@ -1,8 +1,30 @@
-"""OpenAI-backed Python refactor generation."""
+"""OpenAI-compatible Python refactor generation."""
 
 from langchain_openai import ChatOpenAI
 
-from app.config import OPENAI_MODEL, get_openai_api_key
+from app.config import (
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_MODEL,
+    OPENAI_MODEL,
+    get_openai_api_key,
+)
+
+
+def get_llm() -> ChatOpenAI:
+    """Create the configured chat model only when a refactor is requested."""
+    if LLM_BASE_URL:
+        return ChatOpenAI(
+            model=LLM_MODEL or OPENAI_MODEL,
+            api_key=LLM_API_KEY or "ollama",
+            base_url=LLM_BASE_URL,
+            temperature=0,
+        )
+    return ChatOpenAI(
+        model=OPENAI_MODEL,
+        api_key=get_openai_api_key(),
+        temperature=0,
+    )
 
 
 def generate_refactor(
@@ -26,12 +48,7 @@ Reviewer feedback:
 Original code:
 {code}
 """
-    llm = ChatOpenAI(
-        model=OPENAI_MODEL,
-        api_key=get_openai_api_key(),
-        temperature=0,
-    )
-    response = llm.invoke(prompt)
+    response = get_llm().invoke(prompt)
     if not isinstance(response.content, str):
         raise TypeError("The refactor model returned non-text content.")
     code = response.content.strip()
