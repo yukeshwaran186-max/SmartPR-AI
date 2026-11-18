@@ -40,10 +40,12 @@ def _run_linter_command(command: list[str], cwd: Path) -> str:
             if isinstance(exc.stderr, bytes)
             else exc.stderr
         )
+        stdout = _limit_output(stdout or "")
+        stderr = _limit_output(stderr or "")
         return (
             f"$ {' '.join(command)}\nTimed out after "
             f"{LINTER_TIMEOUT_SECONDS} seconds.\n"
-            f"stdout:\n{stdout or ''}\nstderr:\n{stderr or ''}"
+            f"stdout:\n{stdout}\nstderr:\n{stderr}"
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
