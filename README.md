@@ -58,6 +58,11 @@ The service writes changes to the pull request's head repository and branch.
 Deploy it behind appropriate network access controls; the approval endpoint is
 intended for trusted reviewers.
 
+The lint tool statically analyzes source and does not execute submitted Python.
+It uses a temporary directory, an isolated Python interpreter mode, a restricted
+subprocess environment, a 15-second command timeout, and a 1 MB source limit.
+This limits exposure but is not an OS- or container-level security boundary.
+
 ## API examples
 
 Start a review using a GitHub `pull_request` webhook-shaped payload:

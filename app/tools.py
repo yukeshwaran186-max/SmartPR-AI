@@ -1,12 +1,17 @@
 """Isolated static analysis tools used by the review workflow."""
 
+import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 from langchain_core.tools import tool
 
 from app.config import LINTER_TIMEOUT_SECONDS
+
+MAX_SOURCE_BYTES = 1_000_000
+MAX_OUTPUT_CHARACTERS = 100_000
 
 
 def _run_linter_command(command: list[str], cwd: Path) -> str:
@@ -17,6 +22,10 @@ def _run_linter_command(command: list[str], cwd: Path) -> str:
             cwd=cwd,
             capture_output=True,
             check=False,
+            close_fds=True,
+            env=_linter_environment(),
+            shell=False,
+            stdin=subprocess.DEVNULL,
             text=True,
             timeout=LINTER_TIMEOUT_SECONDS,
         )
@@ -41,25 +50,72 @@ def _run_linter_command(command: list[str], cwd: Path) -> str:
             f"Required linter executable was not found: {command[0]}"
         ) from exc
 
+    stdout = _limit_output(result.stdout)
+    stderr = _limit_output(result.stderr)
     return (
         f"$ {' '.join(command)}\nExit code: {result.returncode}\n"
-        f"stdout:\n{result.stdout.strip()}\nstderr:\n{result.stderr.strip()}"
+        f"stdout:\n{stdout.strip()}\nstderr:\n{stderr.strip()}"
     )
+
+
+def _linter_environment() -> dict[str, str]:
+    """Keep credentials and Python customization out of linter subprocesses."""
+    environment = {
+        "PATH": os.path.dirname(sys.executable),
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1",
+    }
+    if os.name == "nt":
+        for key in ("SYSTEMROOT", "WINDIR", "TEMP", "TMP"):
+            value = os.environ.get(key)
+            if value:
+                environment[key] = value
+    return environment
+
+
+def _limit_output(output: str) -> str:
+    """Bound the linter output included in review state and API responses."""
+    if len(output) <= MAX_OUTPUT_CHARACTERS:
+        return output
+    return output[:MAX_OUTPUT_CHARACTERS] + "\n[output truncated]"
 
 
 @tool
 def run_linter_tool(code_string: str) -> str:
-    """Run flake8 and black --check on Python code in an isolated temp folder."""
+    """Statically lint source in a bounded temp directory without executing it."""
+    source_bytes = code_string.encode("utf-8")
+    if len(source_bytes) > MAX_SOURCE_BYTES:
+        raise ValueError(f"Source exceeds the {MAX_SOURCE_BYTES}-byte linting limit.")
+
     with tempfile.TemporaryDirectory(prefix="smartpr-lint-") as temp_dir:
         directory = Path(temp_dir)
         source_file = directory / "review_target.py"
-        source_file.write_text(code_string, encoding="utf-8")
+        with source_file.open("x", encoding="utf-8") as source:
+            source.write(code_string)
 
         results = [
             _run_linter_command(
-                ["flake8", "--max-line-length=88", str(source_file)], directory
+                [
+                    sys.executable,
+                    "-I",
+                    "-m",
+                    "flake8",
+                    "--max-line-length=88",
+                    str(source_file),
+                ],
+                directory,
             ),
-            _run_linter_command(["black", "--check", str(source_file)], directory),
+            _run_linter_command(
+                [
+                    sys.executable,
+                    "-I",
+                    "-m",
+                    "black",
+                    "--check",
+                    str(source_file),
+                ],
+                directory,
+            ),
         ]
 
     if all("Exit code: 0" in result for result in results):
