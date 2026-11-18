@@ -1,6 +1,9 @@
 """Offline tests for GitHub webhook and human approval endpoints."""
 
+import sqlite3
+
 from fastapi.testclient import TestClient
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.api import create_app
@@ -73,6 +76,56 @@ def test_approval_endpoint_commits_changes() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
     assert len(github.commits) == 1
+    duplicate = client.post(
+        f"/api/reviews/{thread_id}/approve",
+        json={"approved": True},
+    )
+    assert duplicate.status_code == 409
+
+
+def test_approval_resumes_thread_after_app_restart(tmp_path) -> None:
+    checkpoint_path = tmp_path / "reviews.sqlite"
+    first_connection = sqlite3.connect(checkpoint_path, check_same_thread=False)
+    second_connection = sqlite3.connect(checkpoint_path, check_same_thread=False)
+    try:
+        first_saver = SqliteSaver(first_connection)
+        first_saver.setup()
+        first_github = FakeGitHubClient()
+        first_graph = build_review_graph(
+            checkpointer=first_saver,
+            github_client=first_github,
+            refactor_fn=FakeRefactor(),
+            linter=FakeLinter(),
+        )
+        first_client = TestClient(create_app(first_graph))
+        started = first_client.post(
+            "/api/webhooks/github", json=_webhook_payload()
+        )
+        assert started.status_code == 202
+        thread_id = started.json()["thread_id"]
+        assert first_github.commits == []
+
+        second_saver = SqliteSaver(second_connection)
+        second_saver.setup()
+        second_github = FakeGitHubClient()
+        second_graph = build_review_graph(
+            checkpointer=second_saver,
+            github_client=second_github,
+            refactor_fn=FakeRefactor(),
+            linter=FakeLinter(),
+        )
+        second_client = TestClient(create_app(second_graph))
+        approved = second_client.post(
+            f"/api/reviews/{thread_id}/approve",
+            json={"approved": True},
+        )
+
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "completed"
+        assert len(second_github.commits) == 1
+    finally:
+        first_connection.close()
+        second_connection.close()
 
 
 def test_api_returns_404_for_unknown_thread_and_422_for_invalid_payload() -> None:

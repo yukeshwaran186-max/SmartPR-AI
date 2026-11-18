@@ -71,15 +71,13 @@ class ReviewResponse(BaseModel):
 
 
 def create_app(review_graph: Any | None = None) -> FastAPI:
-    """Create the API and its in-process map of known review threads."""
+    """Create the API with review-thread state stored in the graph checkpointer."""
     graph = review_graph or build_review_graph()
     app = FastAPI(
         title="Autonomous Code Review & Refactoring Agent",
         version="1.0.0",
         description="Review changed Python files and apply only approved refactors.",
     )
-    known_threads: set[str] = set()
-
     @app.post(
         "/api/webhooks/github",
         response_model=ReviewResponse,
@@ -143,7 +141,6 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
                 detail=str(exc),
             ) from None
 
-        known_threads.add(thread_id)
         logger.info(
             "Review paused for approval",
             extra={"thread_id": thread_id, "status": "awaiting_approval"},
@@ -162,15 +159,15 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
     )
     def decide_review(thread_id: str, decision: ApprovalRequest) -> ReviewResponse:
         """Resume an approved review or regenerate after reviewer feedback."""
-        if thread_id not in known_threads:
+        thread_config = {"configurable": {"thread_id": thread_id}}
+        snapshot = graph.get_state(thread_config)
+        if not snapshot.values:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Unknown review thread.",
             )
 
-        thread_config = {"configurable": {"thread_id": thread_id}}
-        snapshot = graph.get_state(thread_config)
-        if not snapshot.values or "apply_changes_node" not in snapshot.next:
+        if "apply_changes_node" not in snapshot.next:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This review is not waiting for an approval decision.",
