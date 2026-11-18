@@ -78,6 +78,7 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
         version="1.0.0",
         description="Review changed Python files and apply only approved refactors.",
     )
+
     @app.post(
         "/api/webhooks/github",
         response_model=ReviewResponse,

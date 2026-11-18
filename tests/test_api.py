@@ -98,9 +98,7 @@ def test_approval_resumes_thread_after_app_restart(tmp_path) -> None:
             linter=FakeLinter(),
         )
         first_client = TestClient(create_app(first_graph))
-        started = first_client.post(
-            "/api/webhooks/github", json=_webhook_payload()
-        )
+        started = first_client.post("/api/webhooks/github", json=_webhook_payload())
         assert started.status_code == 202
         thread_id = started.json()["thread_id"]
         assert first_github.commits == []
