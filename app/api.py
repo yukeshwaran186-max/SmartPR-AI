@@ -1,3 +1,4 @@
+
 """FastAPI routes for GitHub pull-request review threads."""
 
 import logging
@@ -162,6 +163,7 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
         """Resume an approved review or regenerate after reviewer feedback."""
         thread_config = {"configurable": {"thread_id": thread_id}}
         snapshot = graph.get_state(thread_config)
+
         if not snapshot.values:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -176,6 +178,7 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
 
         if decision.approved:
             graph.update_state(thread_config, {"is_approved": True})
+
             try:
                 graph.invoke(None, config=thread_config)
                 final_state = graph.get_state(thread_config)
@@ -197,10 +200,12 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=str(exc),
                 ) from None
+
             logger.info(
                 "Review completed",
                 extra={"thread_id": thread_id, "status": "completed"},
             )
+
             return ReviewResponse(
                 thread_id=thread_id,
                 status=final_state.values.get("status", "completed"),
@@ -209,14 +214,26 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
                 lint_errors=final_state.values.get("lint_errors", []),
             )
 
+        # Rejection: use the previous proposal as the source for the next review.
+        revised_code = snapshot.values.get("refactored_code", {})
+
+        if not revised_code:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No refactored code is available to reject.",
+            )
+
         graph.update_state(
             thread_config,
             {
                 "is_approved": False,
                 "reviewer_feedback": decision.feedback,
+                "code_contents": revised_code,
+                "lint_errors": [],
             },
             as_node="fetch_pr_node",
         )
+
         try:
             graph.invoke(None, config=thread_config)
             updated_state = graph.get_state(thread_config)
@@ -243,6 +260,7 @@ def create_app(review_graph: Any | None = None) -> FastAPI:
             "Rejected refactor regenerated and paused for approval",
             extra={"thread_id": thread_id, "status": "awaiting_approval"},
         )
+
         return ReviewResponse(
             thread_id=thread_id,
             status=updated_state.values.get("status", "awaiting_approval"),
